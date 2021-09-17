@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 
 
@@ -24,19 +25,34 @@ public class Client{
             userName = clientName;
         }
 
-        // Message format for sending to server.
+        boolean validUserName(String username) {
+            if(username != null && username.matches("^[0-9a-zA-Z]*$")){
+                return true;
+            }
+            return false;
+        }
+
+        // Message format for sending to server
         String sendMessage(String input){
             String message = "";
             String username = "";
             String content = "";
             int idx = 0;
-            while(input.charAt(idx) != ' '){
-                if(input.charAt(idx) == '@'){
+            while(idx < input.length() && input.charAt(idx) != ' '){
+                if(input.charAt(idx) == '@' && idx == 0){
                     idx++;
                     continue;
                 }
+                else if(idx == 0){
+                    System.out.println("Wrong Format! Enter your message again");
+                    return "";
+                }
                 username += input.charAt(idx);
                 idx++;
+            }
+            if(idx == input.length() || username.length() == 0 || !validUserName(username)) {
+                System.out.println("Wrong Format! Enter your message again");
+                return "";
             }
             content = input.substring(idx+1);
             message = "SEND " + username + "\n" + "Content-length: " + Integer.toString(content.length()) + "\n" + "\n" + content;
@@ -60,6 +76,9 @@ public class Client{
                     stdIn = new BufferedReader(new InputStreamReader(System.in));
                     message = stdIn.readLine();
                     message = sendMessage(message);
+                    if(message.length() == 0) {
+                        continue;
+                    }
                     out.println(message);
 
                     // Waiting for acknowledgement
@@ -90,8 +109,8 @@ public class Client{
 
             } catch (IOException e) {
                 // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
+                System.out.println("Exception");
+            } 
             
         }
     
@@ -141,8 +160,8 @@ public class Client{
                             }
                         }
                     }
-                } catch (Exception e) {
-                    e.printStackTrace();
+                } catch (IOException e) {
+                    System.out.println("Exception");
                 };
         }
     
