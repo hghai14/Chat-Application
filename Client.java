@@ -5,8 +5,13 @@ import java.net.UnknownHostException;
 
 
 public class Client{
+    // Socket thorugh which client receives forwards from server i.e messages from other clients
     static Socket forwardsSocket;
+
+    // Socket through which client send messages to server to forward it to other clients
     static Socket sendMessageSocket;
+
+    // Keep track for both sockets is connections are opened.
     static boolean connectionClosed = false;
 
     // Thread for sending messages to clients

@@ -4,19 +4,29 @@ import java.net.Socket;
 import java.util.*;
 
 
-
 public class Server{
+    // Server socket listening for connections
     ServerSocket serverSoc;
+
+    // Keeping a list of active sockets
     ArrayList<Socket> active_sockets = new ArrayList<>(); 
+
+    // TO store registered user and sockets thorugh which they receive messages
     static Hashtable<String, Socket> registered_users = new Hashtable<>();
 
+    // Thread for each connection
     static class ServerThread extends Thread{
+        // Socket of connection at server
         Socket socket;
+        // CLient registered for this socket
         String clientName;
+
+
         ServerThread(Socket soc) {
             socket = soc;
         }
 
+        // Thread process
         public void run(){
             
             BufferedReader in;
@@ -72,12 +82,22 @@ public class Server{
                             String line;
                             while(true){ 
                                 line = in.readLine();  
-                                if(line != null) {
+                                if(line != null && line.length()!=0 && !line.equals(" ")) {
                                     if(line.length()>4 && line.substring(0, 4).equals("SEND")){
                                         // Breadcast Messages
                                         if(line.substring(5).equals("ALL")){
 
                                             line = in.readLine();
+                                            // Header packet error
+                                            if(!line.matches("^Content-length: [0-9]*$")){
+                                                out.println("ERROR 103 Header Incomplete\n \n");
+                                                // Closing both sockets of current client
+                                                Socket forwardsSocket = registered_users.get(clientName);
+                                                forwardsSocket.close();
+                                                registered_users.remove(clientName);
+                                                socket.close();
+                                                return;
+                                            }
                                             int len = Integer.valueOf(line.substring(16));
 
                                             line = in.readLine();
@@ -87,6 +107,7 @@ public class Server{
                                             // Header Packet Error, closing connections with client
                                             if(content.length() != len){
                                                 out.println("ERROR 103 Header Incomplete\n \n");
+
                                                 // Closing both sockets of current client
                                                 Socket forwardsSocket = registered_users.get(clientName);
                                                 forwardsSocket.close();
@@ -98,6 +119,7 @@ public class Server{
                                             // Broadcasting message and checking if success
                                             boolean result = broadcastMessage(content);
 
+                                            // Acknowledging the sender
                                             if(result) {
                                                 out.println("SEND ALL\n");
                                             }
@@ -112,6 +134,18 @@ public class Server{
                                         String receiver = line.substring(5);
 
                                         line = in.readLine();
+
+                                        // Header packet error
+                                        if(!line.matches("Content-length: ([0-9]*)")){
+                                            out.println("ERROR 103 Header Incomplete\n \n");
+
+                                            // Closing both sockets of current client
+                                            Socket forwardsSocket = registered_users.get(clientName);
+                                            forwardsSocket.close();
+                                            registered_users.remove(clientName);
+                                            socket.close();
+                                            return;
+                                        }
                                         int len = Integer.valueOf(line.substring(16));
 
                                         line = in.readLine();
@@ -121,6 +155,7 @@ public class Server{
                                         // Header Packet Error, closing connections with client
                                         if(content.length() != len){
                                             out.println("ERROR 103 Header Incomplete\n \n");
+
                                             // Closing both sockets of current client
                                             Socket forwardsSocket = registered_users.get(clientName);
                                             forwardsSocket.close();
@@ -131,12 +166,24 @@ public class Server{
 
                                         boolean result = unicastMessage(line, receiver);
 
+                                        // Acknowledging the sender
                                         if(result) {
                                             out.println("SEND " + receiver + "\n");
                                         }
                                         else{
                                             out.println("ERROR 102\n");
                                         }
+
+                                    }
+                                    else if(!line.matches("SEND ([A-Za-z0-9]*)")){
+                                        out.println("ERROR 103 Header Incomplete\n \n");
+
+                                        // Closing both sockets of current client
+                                        Socket forwardsSocket = registered_users.get(clientName);
+                                        forwardsSocket.close();
+                                        registered_users.remove(clientName);
+                                        socket.close();
+                                        return;
                                     }
                                 }
                             }
@@ -152,19 +199,28 @@ public class Server{
             }
         }
 
+        // Broadcasting message using stop and wait
         private boolean broadcastMessage(String content) {
+
             int len = content.length();
             String forwardMessage = "FORWARD " + clientName + "\n" + "Content-Length: " + Integer.toString(len) + "\n" +"\n" + content;
+            
             PrintWriter receiverOut;
             boolean success = true;
+
             for (Map.Entry<String, Socket> e : registered_users.entrySet()){
+
                 if(!e.getKey().equals(clientName)){
                     Socket currClient = e.getValue();
+
                     try {
                         receiverOut = new PrintWriter(currClient.getOutputStream(), true);
                         receiverOut.println(forwardMessage);
+
                         BufferedReader in = new BufferedReader(new InputStreamReader(currClient.getInputStream()));
                         String reply = in.readLine();
+
+                        // Waiting for acknowledgement
                         while(true) {
                             if(reply == null || reply.length() < 4 || reply.equals(" ")){
                                 continue;
@@ -196,18 +252,29 @@ public class Server{
             }
         }
 
+        // Forwarding message to single receiver
         private boolean unicastMessage(String content, String recipient){
             Socket receiverClientSocket = registered_users.get(recipient);
+
+            if(receiverClientSocket == null) {
+                return false;
+            }
+
             int len = content.length();
             String forward_message = "FORWARD " + clientName + "\n" + "Content-Length: " + Integer.toString(len) + "\n" +"\n" + content;
+
             PrintWriter receiverOut;
+
             try {
                 receiverOut = new  PrintWriter(receiverClientSocket.getOutputStream(), true);
                 receiverOut.println(forward_message);
                 boolean success = true;
+
                 while (true){
                     BufferedReader in = new BufferedReader(new InputStreamReader(receiverClientSocket.getInputStream()));
                     String reply = in.readLine();
+
+                    // Waiting for acknowledgement
                     while(true) {
                         if(reply == null || reply.length() < 4 || reply.equals(" ")){
                             continue;
@@ -237,8 +304,7 @@ public class Server{
         }
     }
 
-    
-
+    // Server constructor
     public Server(){
         try {
             serverSoc = new ServerSocket(8080);
@@ -247,6 +313,7 @@ public class Server{
         }
     }
 
+    // Validity of username
     public static boolean validUserName(String username) {
         if(username != null && username.matches("^[0-9a-zA-Z]*$")){
             return true;
@@ -255,6 +322,7 @@ public class Server{
     }
 
     void startServer() {
+        // Listens to connections and open new thread and sockets 
         while(true) {
             try {
                 Socket new_socket = this.serverSoc.accept();
@@ -270,7 +338,4 @@ public class Server{
         Server host = new Server();
         host.startServer();
     } 
-
-
-
 }
